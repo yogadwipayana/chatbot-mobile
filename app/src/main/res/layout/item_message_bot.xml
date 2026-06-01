@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="start"
+    android:orientation="horizontal"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="4dp">
+
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="start"
+        android:layout_marginEnd="8dp">
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="18dp"
+            app:cardBackgroundColor="@color/bubble_bot"
+            app:cardElevation="2dp"
+            app:strokeColor="@color/divider"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:id="@+id/layoutBotContent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="300dp"
+                android:orientation="vertical"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="10dp" />
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:id="@+id/tvTimeBot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginTop="3dp"
+            android:layout_marginStart="4dp"
+            android:text="10:00"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+
+</LinearLayout>

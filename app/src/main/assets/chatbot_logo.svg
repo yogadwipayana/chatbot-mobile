@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108" role="img" aria-label="Chatbot logo">
+  <path d="M28 14h52c8 0 14 6 14 14v52c0 8-6 14-14 14H28c-8 0-14-6-14-14V28c0-8 6-14 14-14z" fill="#3949AB"/>
+  <path d="M26 14h54c8 0 14 6 14 14v18C82 38 68 34 54 34c-16 0-30 6-40 17V28c0-8 6-14 12-14z" fill="#5C6BC0"/>
+  <path d="M31 36c0-7 5-12 12-12h31c7 0 12 5 12 12v22c0 7-5 12-12 12H57L42 82V70c-6-1-11-6-11-12V36z" fill="#FFFFFF"/>
+  <circle cx="50" cy="48" r="4.5" fill="#3949AB"/>
+  <circle cx="68" cy="48" r="4.5" fill="#3949AB"/>
+  <path d="M52 60h14" fill="none" stroke="#7C4DFF" stroke-width="5" stroke-linecap="round"/>
+  <path d="M80 22l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z" fill="#10B981"/>
+</svg>

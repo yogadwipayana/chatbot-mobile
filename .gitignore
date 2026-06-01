@@ -1,0 +1,29 @@
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Gradle / Android build output
+.gradle/
+**/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Local config
+local.properties
+
+# Logs and generated debug artifacts
+*.log
+/logcat_latest.txt
+/screen.png
+/window.xml
+/chatbot_debug.db
+
+# OS files
+.DS_Store
+Thumbs.db

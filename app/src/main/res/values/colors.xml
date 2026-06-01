@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Primary palette — deep indigo -->
+    <color name="primary">#5C6BC0</color>
+    <color name="primary_dark">#3949AB</color>
+    <color name="primary_light">#9FA8DA</color>
+    <color name="primary_container">#E8EAF6</color>
+
+    <!-- Accent -->
+    <color name="accent">#7C4DFF</color>
+
+    <!-- Surface & background -->
+    <color name="background">#F5F6FA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#ECEEF8</color>
+
+    <!-- Text -->
+    <color name="text_primary">#1A1C2E</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="text_hint">#9CA3AF</color>
+    <color name="text_on_primary">#FFFFFF</color>
+
+    <!-- Chat bubbles -->
+    <color name="bubble_user">#5C6BC0</color>
+    <color name="bubble_user_text">#FFFFFF</color>
+    <color name="bubble_bot">#FFFFFF</color>
+    <color name="bubble_bot_text">#1A1C2E</color>
+
+    <!-- Divider & border -->
+    <color name="divider">#E5E7EB</color>
+    <color name="input_background">#F0F1F8</color>
+
+    <!-- Status -->
+    <color name="online_green">#10B981</color>
+</resources>
