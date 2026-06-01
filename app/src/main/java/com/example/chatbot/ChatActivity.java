@@ -252,26 +252,18 @@ public class ChatActivity extends AppCompatActivity {
 
     private String formatProcessingStatus(String status) {
         if (status == null || status.trim().isEmpty()) return "Memproses";
-
-        switch (status.trim()) {
-            case "Thinking":
-                return "Menganalisis permintaan";
-            case "Image generation":
-                return "Membuat gambar";
-            case "Web fetch":
-                return "Membaca halaman web";
-            case "Web search":
-                return "Mencari di web";
-            case "Chat":
-            case "Preparing answer":
-                return "Menyiapkan jawaban";
-            default:
-                return status.trim();
-        }
+        return status.trim();
     }
 
     private void updateReplyActionForMessages() {
         if (adapter.isThinking()) return;
+
+        long retryableErrorUserMessageId = findRetryableErrorUserMessageId();
+        if (retryableErrorUserMessageId != -1) {
+            adapter.clearReplyMessage();
+            adapter.setRetryMessageId(retryableErrorUserMessageId);
+            return;
+        }
 
         long lastUnansweredUserMessageId = findLastUnansweredUserMessageId();
         if (lastUnansweredUserMessageId == -1) {
@@ -287,6 +279,34 @@ public class ChatActivity extends AppCompatActivity {
         Message lastMessage = messageList.get(messageList.size() - 1);
         if (!lastMessage.getRole().equalsIgnoreCase("user")) return -1;
         return lastMessage.getId();
+    }
+
+    private long findRetryableErrorUserMessageId() {
+        if (messageList.size() < 2) return -1;
+
+        Message lastMessage = messageList.get(messageList.size() - 1);
+        if (!lastMessage.getRole().equalsIgnoreCase("bot")
+                || !isRetryableBotError(lastMessage.getContent())) {
+            return -1;
+        }
+
+        for (int i = messageList.size() - 2; i >= 0; i--) {
+            Message message = messageList.get(i);
+            if (message.getRole().equalsIgnoreCase("user")) return message.getId();
+        }
+        return -1;
+    }
+
+    private boolean isRetryableBotError(String content) {
+        if (content == null) return false;
+        String lower = content.toLowerCase();
+        return lower.contains("timeout")
+                || lower.contains("terlalu lama")
+                || lower.contains("tidak ada koneksi")
+                || lower.contains("koneksi gagal")
+                || lower.contains("gagal memproses")
+                || lower.contains("coba lagi")
+                || lower.contains("error api");
     }
 
     private String buildUnansweredUserPrompt(Message fallbackMessage) {
@@ -316,8 +336,24 @@ public class ChatActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         loadChatHistory();
-        adapter.setThinking(false);
-        progressBar.setVisibility(View.GONE);
+        // Only reset thinking state if the service is not currently running
+        if (!isAiServiceRunning()) {
+            adapter.setThinking(false);
+            progressBar.setVisibility(View.GONE);
+        }
+    }
+
+    private boolean isAiServiceRunning() {
+        android.app.ActivityManager am =
+                (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        if (am == null) return false;
+        for (android.app.ActivityManager.RunningServiceInfo info :
+                am.getRunningServices(Integer.MAX_VALUE)) {
+            if (AiRequestService.class.getName().equals(info.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
