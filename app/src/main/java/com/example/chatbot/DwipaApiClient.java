@@ -252,6 +252,73 @@ public class DwipaApiClient {
         return messages;
     }
 
+    public JsonArray buildMessagesForRequest(List<Message> history, long userMsgId, String apiText) {
+        JsonArray messages = new JsonArray();
+        messages.add(buildSystemMessage());
+
+        if (history == null || history.isEmpty()) {
+            addUserMessage(messages, apiText);
+            return messages;
+        }
+
+        int targetIndex = findMessageIndex(history, userMsgId);
+        if (targetIndex == -1) targetIndex = history.size() - 1;
+
+        String requestText = normalizeRequestText(apiText);
+        if (requestText.isEmpty() && targetIndex >= 0 && targetIndex < history.size()) {
+            requestText = normalizeRequestText(history.get(targetIndex).getContent());
+        }
+
+        int contextEnd = targetIndex;
+        while (contextEnd > 0 && isUserMessage(history.get(contextEnd - 1))) {
+            contextEnd--;
+        }
+
+        int start = Math.max(0, contextEnd - CONTEXT_MESSAGE_LIMIT);
+        for (int i = start; i < contextEnd; i++) {
+            addHistoryMessage(messages, history.get(i));
+        }
+
+        addUserMessage(messages, requestText);
+        return messages;
+    }
+
+    private int findMessageIndex(List<Message> history, long messageId) {
+        for (int i = 0; i < history.size(); i++) {
+            if (history.get(i).getId() == messageId) return i;
+        }
+        return -1;
+    }
+
+    private void addHistoryMessage(JsonArray messages, Message msg) {
+        if (msg.getContent() == null || msg.getContent().trim().isEmpty()) return;
+        if (isImageContent(msg.getContent())) return;
+
+        JsonObject m = new JsonObject();
+        String role = "bot".equalsIgnoreCase(msg.getRole()) ? "assistant" : "user";
+        m.addProperty("role", role);
+        m.addProperty("content", shorten(msg.getContent(), CONTEXT_MESSAGE_CHAR_LIMIT));
+        messages.add(m);
+    }
+
+    private void addUserMessage(JsonArray messages, String content) {
+        String normalized = normalizeRequestText(content);
+        if (normalized.isEmpty()) return;
+
+        JsonObject m = new JsonObject();
+        m.addProperty("role", "user");
+        m.addProperty("content", shorten(normalized, CONTEXT_MESSAGE_CHAR_LIMIT));
+        messages.add(m);
+    }
+
+    private boolean isUserMessage(Message message) {
+        return message != null && "user".equalsIgnoreCase(message.getRole());
+    }
+
+    private String normalizeRequestText(String text) {
+        return text == null ? "" : text.trim();
+    }
+
     private JsonObject buildSystemMessage() {
         // Inject current date so model knows "today" for time-sensitive queries
         String today = new java.text.SimpleDateFormat("EEEE, d MMMM yyyy", java.util.Locale.forLanguageTag("id"))

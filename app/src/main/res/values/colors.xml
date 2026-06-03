@@ -35,4 +35,5 @@
 
     <!-- Status -->
     <color name="online_green">#10B981</color>
+    <color name="offline_red">#EF4444</color>
 </resources>

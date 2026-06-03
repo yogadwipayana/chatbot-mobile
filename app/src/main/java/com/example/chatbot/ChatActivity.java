@@ -6,12 +6,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -36,6 +42,8 @@ public class ChatActivity extends AppCompatActivity {
     private MessageAdapter adapter;
     private EditText etMessage;
     private ProgressBar progressBar;
+    private View viewConnectionDot;
+    private TextView tvConnectionStatus;
     private List<Message> messageList = new ArrayList<>();
     private String pendingImageIterationPrompt = "";
     private boolean aiResponseReceiverRegistered = false;
@@ -58,6 +66,11 @@ public class ChatActivity extends AppCompatActivity {
                 adapter.setThinking(false);
                 progressBar.setVisibility(View.GONE);
                 adapter.clearReplyMessage();
+                updateConnectionStatus(hasInternetConnection());
+                String errorMessage = intent.getStringExtra(AiRequestService.EXTRA_ERROR_MESSAGE);
+                if (errorMessage != null && !errorMessage.trim().isEmpty()) {
+                    Toast.makeText(ChatActivity.this, errorMessage, Toast.LENGTH_LONG).show();
+                }
                 long failedMessageId = intent.getLongExtra(AiRequestService.EXTRA_USER_MESSAGE_ID, -1);
                 if (failedMessageId != -1) {
                     adapter.setRetryMessageId(failedMessageId);
@@ -89,6 +102,9 @@ public class ChatActivity extends AppCompatActivity {
         etMessage = findViewById(R.id.etMessage);
         Button btnSend = findViewById(R.id.btnSend);
         progressBar = findViewById(R.id.progressBar);
+        viewConnectionDot = findViewById(R.id.viewConnectionDot);
+        tvConnectionStatus = findViewById(R.id.tvConnectionStatus);
+        updateConnectionStatus(hasInternetConnection());
 
         // Setup RecyclerView
         adapter = new MessageAdapter(messageList);
@@ -150,6 +166,17 @@ public class ChatActivity extends AppCompatActivity {
      * Alur pengiriman pesan: simpan ke DB -> tampilkan -> panggil API -> simpan respon -> tampilkan.
      */
     private void sendMessage() {
+        if (!hasInternetConnection()) {
+            updateConnectionStatus(false);
+            Toast.makeText(this, "Tidak ada koneksi internet. Aktifkan Wi-Fi atau data seluler.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (adapter.isThinking()) {
+            Toast.makeText(this, "Tunggu jawaban AI selesai diproses.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String text = etMessage.getText().toString().trim();
         if (text.isEmpty()) return;
         String apiText = buildApiText(text);
@@ -192,23 +219,23 @@ public class ChatActivity extends AppCompatActivity {
 
     private void retryMessage(Message message) {
         if (adapter.isThinking()) return;
-
-        adapter.clearRetryMessage();
-        adapter.clearReplyMessage();
-        showProcessingStatus("Thinking");
-        startAiRequestService(message.getContent(), message.getId());
+        restartAiRequest(message.getContent(), message.getId());
     }
 
     private void replyToUnansweredMessages(Message message) {
         if (adapter.isThinking()) return;
+        restartAiRequest(buildUnansweredUserPrompt(message), message.getId());
+    }
 
+    private void restartAiRequest(String apiText, long userMessageId) {
         adapter.clearRetryMessage();
         adapter.clearReplyMessage();
-        showProcessingStatus("Thinking");
-        startAiRequestService(buildUnansweredUserPrompt(message), message.getId());
+        showProcessingStatus("Mencoba ulang");
+        startAiRequestService(apiText, userMessageId);
     }
 
     private void startAiRequestService(String apiText, long userMessageId) {
+        updateConnectionStatus(hasInternetConnection());
         Intent intent = new Intent(this, AiRequestService.class);
         intent.putExtra(AiRequestService.EXTRA_SESSION_ID, sessionId);
         intent.putExtra(AiRequestService.EXTRA_API_TEXT, apiText);
@@ -335,11 +362,43 @@ public class ChatActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        loadChatHistory();
-        // Only reset thinking state if the service is not currently running
-        if (!isAiServiceRunning()) {
+        updateConnectionStatus(hasInternetConnection());
+        boolean aiServiceRunning = isAiServiceRunning();
+        if (aiServiceRunning) {
+            showProcessingStatus("Memproses");
+        } else {
             adapter.setThinking(false);
             progressBar.setVisibility(View.GONE);
+        }
+        loadChatHistory();
+    }
+
+    private boolean hasInternetConnection() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+
+            Network network = cm.getActiveNetwork();
+            if (network == null) return false;
+
+            NetworkCapabilities capabilities = cm.getNetworkCapabilities(network);
+            return capabilities != null
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (SecurityException e) {
+            return false;
+        }
+    }
+
+    private void updateConnectionStatus(boolean online) {
+        if (tvConnectionStatus != null) {
+            tvConnectionStatus.setText(online ? "Online" : "Offline");
+        }
+        if (viewConnectionDot != null) {
+            GradientDrawable dot = new GradientDrawable();
+            dot.setShape(GradientDrawable.OVAL);
+            dot.setColor(ContextCompat.getColor(this, online ? R.color.online_green : R.color.offline_red));
+            viewConnectionDot.setBackground(dot);
         }
     }
 

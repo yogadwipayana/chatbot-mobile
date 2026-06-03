@@ -22,7 +22,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -51,6 +54,8 @@ public class AiRequestService extends Service {
     private ChatDAO        chatDAO;
     private DwipaApiClient apiClient;
     private final Handler  mainHandler = new Handler(Looper.getMainLooper());
+    private final Object activeRequestLock = new Object();
+    private final Map<Long, RequestLifecycle> activeRequests = new HashMap<>();
 
     @Override
     public void onCreate() {
@@ -66,6 +71,7 @@ public class AiRequestService extends Service {
 
         long sessionId = intent.getLongExtra(EXTRA_SESSION_ID, -1);
         long userMsgId = intent.getLongExtra(EXTRA_USER_MESSAGE_ID, -1);
+        String apiText = intent.getStringExtra(EXTRA_API_TEXT);
 
         if (sessionId == -1) {
             stopSelf(startId);
@@ -74,7 +80,7 @@ public class AiRequestService extends Service {
 
         startForeground(NOTIFICATION_ID, buildNotification(sessionId, "Menganalisis permintaan"));
         notifyStatus(sessionId, "Menganalisis permintaan");
-        processRequest(sessionId, userMsgId, startId);
+        processRequest(sessionId, userMsgId, apiText, startId);
         return START_NOT_STICKY;
     }
 
@@ -82,13 +88,13 @@ public class AiRequestService extends Service {
     // Core: multi-turn tool loop
     // -------------------------------------------------------------------------
 
-    private void processRequest(long sessionId, long userMsgId, int startId) {
+    private void processRequest(long sessionId, long userMsgId, String apiText, int startId) {
         List<Message> history = chatDAO.getMessagesBySession(sessionId);
         RequestLifecycle lifecycle = new RequestLifecycle(sessionId, userMsgId, startId);
+        replaceActiveRequest(lifecycle);
         lifecycle.setTimeout(TIMEOUT_CHAT_MS, "Jawaban AI terlalu lama. Coba lagi.");
 
-        // Build the initial messages array from DB history (trimmed to context limit)
-        JsonArray messages = apiClient.buildBaseMessages(history);
+        JsonArray messages = apiClient.buildMessagesForRequest(history, userMsgId, apiText);
         runToolLoop(sessionId, messages, lifecycle, 0);
     }
 
@@ -102,6 +108,7 @@ public class AiRequestService extends Service {
             RequestLifecycle lifecycle,
             int iteration
     ) {
+        if (lifecycle.isCompleted()) return;
         if (iteration >= MAX_TOOL_ITERATIONS) {
             lifecycle.complete("Maaf, permintaan ini membutuhkan terlalu banyak langkah. Coba sederhanakan pertanyaanmu.");
             return;
@@ -141,6 +148,7 @@ public class AiRequestService extends Service {
             int iteration,
             List<DwipaApiClient.ToolCall> toolCalls
     ) {
+        if (lifecycle.isCompleted()) return;
         int total = toolCalls.size();
         // AtomicReferenceArray ensures thread-safe writes from concurrent callbacks
         AtomicReferenceArray<String> results = new AtomicReferenceArray<>(total);
@@ -186,6 +194,7 @@ public class AiRequestService extends Service {
             List<DwipaApiClient.ToolCall> toolCalls,
             AtomicReferenceArray<String> results
     ) {
+        if (lifecycle.isCompleted()) return;
         // Build tool result triples: [toolCallId, toolName, result]
         List<String[]> toolResults = new ArrayList<>();
         for (int i = 0; i < toolCalls.size(); i++) {
@@ -253,7 +262,7 @@ public class AiRequestService extends Service {
         private final long     userMsgId;
         private final int      startId;
         private Runnable       timeoutRunnable;
-        private boolean        completed = false;
+        private final AtomicBoolean completed = new AtomicBoolean(false);
 
         RequestLifecycle(long sessionId, long userMsgId, int startId) {
             this.sessionId = sessionId;
@@ -262,15 +271,19 @@ public class AiRequestService extends Service {
         }
 
         void setTimeout(long ms, String message) {
-            if (completed) return;
+            if (completed.get()) return;
             if (timeoutRunnable != null) mainHandler.removeCallbacks(timeoutRunnable);
             timeoutRunnable = () -> fail(message);
             mainHandler.postDelayed(timeoutRunnable, ms);
         }
 
+        boolean isCompleted() {
+            return completed.get();
+        }
+
         void complete(String response) {
-            if (completed) return;
-            completed = true;
+            if (!completed.compareAndSet(false, true)) return;
+            clearActiveRequest(this);
             cancelTimeout();
             new Thread(() -> {
                 try {
@@ -282,17 +295,42 @@ public class AiRequestService extends Service {
         }
 
         void fail(String errorMessage) {
-            if (completed) return;
-            completed = true;
+            if (!completed.compareAndSet(false, true)) return;
+            clearActiveRequest(this);
             cancelTimeout();
             notifyRequestFailed(sessionId, userMsgId, errorMessage);
             mainHandler.post(() -> finish(startId));
+        }
+
+        void cancelSuperseded() {
+            if (!completed.compareAndSet(false, true)) return;
+            clearActiveRequest(this);
+            cancelTimeout();
+            mainHandler.post(() -> stopSelf(startId));
         }
 
         private void cancelTimeout() {
             if (timeoutRunnable != null) {
                 mainHandler.removeCallbacks(timeoutRunnable);
                 timeoutRunnable = null;
+            }
+        }
+    }
+
+    private void replaceActiveRequest(RequestLifecycle lifecycle) {
+        synchronized (activeRequestLock) {
+            RequestLifecycle previous = activeRequests.get(lifecycle.sessionId);
+            if (previous != null && previous != lifecycle) {
+                previous.cancelSuperseded();
+            }
+            activeRequests.put(lifecycle.sessionId, lifecycle);
+        }
+    }
+
+    private void clearActiveRequest(RequestLifecycle lifecycle) {
+        synchronized (activeRequestLock) {
+            if (activeRequests.get(lifecycle.sessionId) == lifecycle) {
+                activeRequests.remove(lifecycle.sessionId);
             }
         }
     }
