@@ -176,6 +176,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             UserMessageViewHolder userHolder = (UserMessageViewHolder) holder;
             userHolder.tvMessage.setText(message.getContent());
             userHolder.tvMessage.setTextIsSelectable(true);
+            userHolder.tvMessage.setOnLongClickListener(null);
             userHolder.tvTime.setVisibility(View.GONE);
             boolean showRetry = message.getId() == retryMessageId;
             boolean showReply = !showRetry && message.getId() == replyMessageId;
@@ -282,6 +283,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         textView.setLineSpacing(dp(container, 3), 1.0f);
         textView.setPadding(0, 0, 0, dp(container, isListItem(text) ? 8 : 10));
         textView.setTextIsSelectable(true);
+        textView.setOnLongClickListener(null);
         textView.setAutoLinkMask(Linkify.WEB_URLS);
         textView.setLinksClickable(true);
         textView.setLinkTextColor(Color.parseColor("#5C6BC0"));

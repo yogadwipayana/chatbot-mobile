@@ -242,8 +242,18 @@ public class AiRequestService extends Service {
                 notifyStatus(sessionId, "Membuat gambar");
                 updateNotification(sessionId, "Membuat gambar");
                 lifecycle.setTimeout(TIMEOUT_IMAGE_MS, "Pembuatan gambar terlalu lama. Coba lagi.");
-                // Route through normal callback so model sees the result and can comment on it
-                apiClient.generateImage(prompt, callback);
+                apiClient.generateImage(prompt, new DwipaApiClient.ApiCallback() {
+                    @Override
+                    public void onSuccess(String result) {
+                        notifyStatus(sessionId, "Menyimpan gambar");
+                        lifecycle.complete(result);
+                    }
+
+                    @Override
+                    public void onFailure(String errorMessage) {
+                        lifecycle.fail(errorMessage);
+                    }
+                });
                 break;
             }
             default:

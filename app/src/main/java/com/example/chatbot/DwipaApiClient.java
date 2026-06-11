@@ -24,10 +24,10 @@ import okio.BufferedSource;
 
 public class DwipaApiClient {
 
-    private static final String API_URL          = "https://ai.dwipa.my.id/v1/chat/completions";
-    private static final String IMAGE_API_URL    = "https://ai.dwipa.my.id/v1/images/generations";
-    private static final String SEARCH_API_URL   = "https://ai.dwipa.my.id/v1/search";
-    private static final String WEB_FETCH_API_URL = "https://ai.dwipa.my.id/v1/web/fetch";
+    private static final String API_URL          = "https://ai.yogathedev.com/v1/chat/completions";
+    private static final String IMAGE_API_URL    = "https://ai.yogathedev.com/v1/images/generations";
+    private static final String SEARCH_API_URL   = "https://ai.yogathedev.com/v1/search";
+    private static final String WEB_FETCH_API_URL = "https://ai.yogathedev.com/v1/web/fetch";
 
     public static final String IMAGE_URL_PREFIX    = "[[image_url]]";
     public static final String IMAGE_BASE64_PREFIX = "[[image_base64]]";
@@ -37,7 +37,7 @@ public class DwipaApiClient {
     public static final String TOOL_WEB_FETCH         = "web_fetch";
     public static final String TOOL_IMAGE_GENERATIONS = "image_generations";
 
-    private static final String API_KEY = "sk-6bf71243b4b07d49-x4280s-212090a5";
+    private static final String API_KEY = "sk-d5d89a9e09252c66-erytkd-5b9e8493";
 
     // Context window limits applied in buildBaseMessages
     static final int CONTEXT_MESSAGE_LIMIT      = 10;
@@ -240,14 +240,7 @@ public class DwipaApiClient {
         int start = Math.max(0, history.size() - CONTEXT_MESSAGE_LIMIT);
         for (int i = start; i < history.size(); i++) {
             Message msg = history.get(i);
-            if (msg.getContent() == null || msg.getContent().trim().isEmpty()) continue;
-            if (isImageContent(msg.getContent())) continue;
-
-            JsonObject m = new JsonObject();
-            String role  = "bot".equalsIgnoreCase(msg.getRole()) ? "assistant" : "user";
-            m.addProperty("role", role);
-            m.addProperty("content", shorten(msg.getContent(), CONTEXT_MESSAGE_CHAR_LIMIT));
-            messages.add(m);
+            addHistoryMessage(messages, msg);
         }
         return messages;
     }
@@ -292,22 +285,41 @@ public class DwipaApiClient {
 
     private void addHistoryMessage(JsonArray messages, Message msg) {
         if (msg.getContent() == null || msg.getContent().trim().isEmpty()) return;
-        if (isImageContent(msg.getContent())) return;
 
-        JsonObject m = new JsonObject();
         String role = "bot".equalsIgnoreCase(msg.getRole()) ? "assistant" : "user";
-        m.addProperty("role", role);
-        m.addProperty("content", shorten(msg.getContent(), CONTEXT_MESSAGE_CHAR_LIMIT));
-        messages.add(m);
+        String content = isImageContent(msg.getContent())
+                ? "Gambar sebelumnya sudah berhasil dibuat dan ditampilkan ke user."
+                : shorten(msg.getContent(), CONTEXT_MESSAGE_CHAR_LIMIT);
+        addChatMessage(messages, role, content);
     }
 
     private void addUserMessage(JsonArray messages, String content) {
         String normalized = normalizeRequestText(content);
         if (normalized.isEmpty()) return;
 
+        addChatMessage(messages, "user", shorten(normalized, CONTEXT_MESSAGE_CHAR_LIMIT));
+    }
+
+    private void addChatMessage(JsonArray messages, String role, String content) {
+        if (content == null || content.trim().isEmpty()) return;
+
+        int lastIndex = messages.size() - 1;
+        if (lastIndex >= 0 && messages.get(lastIndex).isJsonObject()) {
+            JsonObject last = messages.get(lastIndex).getAsJsonObject();
+            if (last.has("role")
+                    && role.equals(last.get("role").getAsString())
+                    && !"system".equals(role)
+                    && last.has("content")
+                    && last.get("content").isJsonPrimitive()) {
+                String merged = last.get("content").getAsString() + "\n\n" + content.trim();
+                last.addProperty("content", shortenKeepingEnd(merged, CONTEXT_MESSAGE_CHAR_LIMIT));
+                return;
+            }
+        }
+
         JsonObject m = new JsonObject();
-        m.addProperty("role", "user");
-        m.addProperty("content", shorten(normalized, CONTEXT_MESSAGE_CHAR_LIMIT));
+        m.addProperty("role", role);
+        m.addProperty("content", content.trim());
         messages.add(m);
     }
 
@@ -437,7 +449,7 @@ public class DwipaApiClient {
 
     public void generateImage(String prompt, ApiCallback callback) {
         JsonObject body = new JsonObject();
-        body.addProperty("model", "cx/gpt-5.4-image");
+        body.addProperty("model", "cx/gpt-5.5-image");
         body.addProperty("prompt", prompt);
         body.addProperty("n", 1);
         body.addProperty("size", "auto");
@@ -584,6 +596,8 @@ public class DwipaApiClient {
         BufferedSource source    = responseBody.source();
         StringBuilder collected  = new StringBuilder();
         boolean sawEventStream   = false;
+        String currentEvent      = "";
+        String lastImage         = null;
 
         while (true) {
             String line = source.readUtf8Line();
@@ -592,13 +606,21 @@ public class DwipaApiClient {
             String trimmed = line.trim();
             if (trimmed.isEmpty()) continue;
 
+            if (trimmed.startsWith("event:")) {
+                sawEventStream = true;
+                currentEvent = trimmed.substring(6).trim();
+                continue;
+            }
             if (trimmed.startsWith("data:")) {
                 sawEventStream = true;
                 String data = trimmed.substring(5).trim();
                 if (data.isEmpty()) continue;
                 if ("[DONE]".equals(data)) break;
                 String image = extractImageFromJson(data);
-                if (image != null) return image;
+                if (image != null) {
+                    if ("done".equalsIgnoreCase(currentEvent)) return image;
+                    lastImage = image;
+                }
                 continue;
             }
             if (!sawEventStream) {
@@ -609,14 +631,7 @@ public class DwipaApiClient {
 
         String direct = extractImageFromJson(collected.toString());
         if (direct != null) return direct;
-        for (String line : collected.toString().split("\\r?\\n")) {
-            String trimmed = line.trim();
-            if (!trimmed.startsWith("data:")) continue;
-            String data = trimmed.substring(5).trim();
-            if (data.isEmpty() || "[DONE]".equals(data)) continue;
-            String image = extractImageFromJson(data);
-            if (image != null) return image;
-        }
+        if (lastImage != null) return lastImage;
         throw new IllegalStateException("Image not found in response");
     }
 
@@ -678,6 +693,7 @@ public class DwipaApiClient {
     }
 
     public boolean isImageContent(String content) {
+        if (content == null) return false;
         return content.startsWith(IMAGE_BASE64_PREFIX)
                 || content.startsWith(IMAGE_FILE_PREFIX)
                 || content.startsWith(IMAGE_URL_PREFIX);
@@ -707,6 +723,12 @@ public class DwipaApiClient {
         if (text == null) return "";
         if (text.length() <= maxLength) return text;
         return text.substring(0, maxLength).trim() + "...";
+    }
+
+    private String shortenKeepingEnd(String text, int maxLength) {
+        if (text == null) return "";
+        if (text.length() <= maxLength) return text;
+        return "..." + text.substring(text.length() - maxLength).trim();
     }
 
     private String getConnectionErrorMessage(IOException e) {
